@@ -1,4 +1,4 @@
-# Korean Subtitle Overlay for GTA San Andreas
+# Korean Subtitle Overlay for GTA San Andreas (WIP)
 
 A modloader ASI plugin that fixes broken in-game subtitles when playing
 GTA San Andreas (1.0 US) with the community Korean text patch.
@@ -77,3 +77,9 @@ Steps:
   guess - see the comment in `finalJamoForByte()` in `src/dllmain.cpp`.
   Everything else in the final-consonant and compound-vowel tables has
   been confirmed against real dialogue text.
+
+## TODO
+
+### 0xAE 종성 매핑 실글리프 대조 검증
+
+#### 인게임 실제 렌더링 스크린샷 검증
