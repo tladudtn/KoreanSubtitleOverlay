@@ -1,0 +1,9 @@
+/bin/
+/KoreanSu.*/
+*.obj
+*.pdb
+*.ipdb
+*.iobj
+*.tlog
+*.recipe
+*.log
