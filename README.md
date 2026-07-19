@@ -73,13 +73,11 @@ Steps:
 
 ## Known limitations
 
-- `0xAE` (final consonant, currently mapped to ㅈ) is an unverified best
-  guess - see the comment in `finalJamoForByte()` in `src/dllmain.cpp`.
-  Everything else in the final-consonant and compound-vowel tables has
-  been confirmed against real dialogue text.
+Every byte in the final-consonant and compound-vowel tables has now been
+confirmed either against real dialogue text, direct glyph comparison via
+FontExtract, or both - see the comments in `finalJamoForByte()` /
+`combineMedial()` in `src/dllmain.cpp`.
 
 ## TODO
-
-### 0xAE 종성 매핑 실글리프 대조 검증
 
 #### 인게임 실제 렌더링 스크린샷 검증

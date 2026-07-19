@@ -160,7 +160,10 @@ wchar_t finalJamoForByte(unsigned char b)
         case 0xAB: return 0x3145; // ㅅ - confirmed via "그것도", "것을", "거짓말쟁이", "멋쟁이"
         case 0xAC: return 0x3146; // ㅆ - confirmed via "있"
         case 0xAD: return 0x3147; // ㅇ - confirmed via "상황" (both syllables share this final)
-        case 0xAE: return 0x3148; // ㅈ - best guess from "[조][가같이도]" as slang "좆같이도"; unverified, may be wrong
+        case 0xAE: return 0x3148; // ㅈ - confirmed both from "[조][가같이도]" slang reading and by visually
+                                   // comparing FontExtract's cell_ae.png against the confirmed ㅅ glyph
+                                   // (cell_ab.png): same checkmark shape plus one extra top stroke, exactly
+                                   // the real ㅅ->ㅈ relationship
         case 0xAF: return 0x314A; // ㅊ - confirmed via "몇" (9+ occurrences), "쫓는"
         default: return 0;
     }
