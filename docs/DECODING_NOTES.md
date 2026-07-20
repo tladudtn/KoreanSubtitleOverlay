@@ -3,8 +3,10 @@
 이 문서는 다른 세션(다른 대화)에서 이 프로젝트를 다시 열었을 때, 그동안의
 조사/결정 과정을 처음부터 다시 하지 않도록 남기는 기술 참고 자료다.
 사용자용 요약은 [README.md](../README.md), 비개발자용 안내는
-[가이드.md](가이드.md) 참고. 이 문서는 "왜 이렇게 매핑했는지", "왜 이렇게
-고쳤는지"의 근거를 전부 담는다.
+[가이드.md](가이드.md) 참고. 이 문서는 자모 디코딩 로직의 "왜 이렇게
+매핑했는지", "왜 이렇게 고쳤는지"의 근거를 전부 담는다 - 후킹/렌더링
+구조 자체는 [ARCHITECTURE.md](ARCHITECTURE.md), fonts.txd HD 병합은
+[HD_FONT_MERGE.md](HD_FONT_MERGE.md) 참고.
 
 ## 프로젝트 구조
 
@@ -14,10 +16,13 @@ C:\Users\SYS\Documents\GTA-SA-Dev\
 │   ├── src\dllmain.cpp      실제 플러그인 소스 (디코더 + 오버레이 렌더링 본체)
 │   ├── src\sa_messages.h    게임 구조체/주소 (plugin-sdk 참조)
 │   ├── tools\gxt_scan.cpp   오프라인 전수 검증 도구 (아래 참고)
-│   └── docs\                문서 모음 (이 파일, 가이드.md, screenshots\)
+│   └── docs\                문서 모음 (이 파일, ARCHITECTURE.md, HD_FONT_MERGE.md,
+│                             가이드.md, screenshots\)
 ├── imgui\                   (사이드로드, 프로젝트에 포함 안 됨)
 ├── minhook\                 (사이드로드, 프로젝트에 포함 안 됨)
-└── FontExtract\             fonts.txd -> 글리프 PNG 추출 도구 (별도 프로젝트)
+├── FontExtract\             fonts.txd 글리프 추출 + merge_fonts 병합 도구 (별도 프로젝트,
+│                             자세한 내용은 HD_FONT_MERGE.md)
+└── txdedit\                 서드파티 오픈소스 TXD 편집기 clone, libtxd가 위 도구들의 실제 구현체
 ```
 
 게임 설치 경로: `C:\Program Files (x86)\Steam\steamapps\common\Grand Theft Auto San Andreas`
@@ -120,7 +125,9 @@ gxt_scan.exe "<게임경로>\modloader\_BASIC\Korean_Patch\american.gxt" report.
 
 `../FontExtract`가 `fonts.txd`의 각 32x32 글리프 셀을 `cell_XX.png`로
 개별 추출해준다 (`output/1_font1_cells/cell_XX.png`, XX=hex 바이트).
-**`font1`이 실제 자모 폰트**(font2는 다른 용도, 확인 안 함). 이미지를
+**`font1`이 실제 자모 폰트**(font2는 WASTED/BUSTED/MISSION PASSED 고딕체 +
+지역명/차량명용 일반 서체 - 이후 세션에서 확인됨, [HD_FONT_MERGE.md](HD_FONT_MERGE.md)
+참고). 이미지를
 직접 열어서(Read 툴로 - Claude는 이미지를 볼 수 있음) 이미 확정된
 바이트의 글리프 모양과 비교하면 텍스트 근거가 약한 바이트도 검증 가능.
 격자 전체 이미지(`_grid.png`, 빨간 격자선 포함)를 크롭해서 여러 바이트를
