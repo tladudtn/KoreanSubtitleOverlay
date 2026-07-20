@@ -109,6 +109,10 @@ GTA-SA-Dev/
 전체 바이트 매핑 근거표와 검증 방법론은
 [docs/DECODING_NOTES.md](docs/DECODING_NOTES.md)를 참고하세요.
 
+이 자막 오버레이와는 별개로, WASTED/BUSTED/지역명/차량명 등 `fonts.txd`
+기반 UI 텍스트에 한글패치와 고해상도 폰트 모드를 동시에 적용한 방법은
+[docs/HD_FONT_MERGE.md](docs/HD_FONT_MERGE.md)를 참고하세요.
+
 ## 알려진 제한사항
 
 종성/겹모음 테이블의 모든 바이트는 실제 대사 텍스트 대조, FontExtract를
