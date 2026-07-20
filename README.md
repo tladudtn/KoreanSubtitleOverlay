@@ -79,8 +79,6 @@ evidence table and verification methodology.
 Every byte in the final-consonant and compound-vowel tables has now been
 confirmed either against real dialogue text, direct glyph comparison via
 FontExtract, or both - see the comments in `finalJamoForByte()` /
-`combineMedial()` in `src/dllmain.cpp`.
-
-## TODO
-
-#### 인게임 실제 렌더링 스크린샷 검증
+`combineMedial()` in `src/dllmain.cpp`. In-game rendering has also been
+confirmed by playing into the "Ryder" mission intro and screenshotting
+the overlay.
