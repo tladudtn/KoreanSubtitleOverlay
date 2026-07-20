@@ -1,5 +1,13 @@
 // Verified struct layout & addresses for GTA SA 1.0 US, sourced from
 // https://github.com/DK22Pac/plugin-sdk (plugin_sa/game_sa/CMessages.h)
+//
+// All addresses below have only been exercised against the dev/test
+// install's exe (already exe-patched for widescreen/ASI-loader support -
+// see gta-sa.exe.bak in the game folder), not a plain, freshly-installed
+// Steam copy. Steam version testing is planned; addresses should hold
+// (exe-loader patches like that typically don't relocate game code) but
+// this hasn't been independently confirmed yet, so flagging it here just
+// in case.
 #pragma once
 #include <cstdint>
 
