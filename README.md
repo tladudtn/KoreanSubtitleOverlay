@@ -130,3 +130,5 @@ exe가 패치된(위젯스크린/ASI 로더 지원용, 게임 폴더의 `gta-sa.
 검증은 안 했습니다. `src/sa_messages.h`의 메모리 주소들이 문제없을
 가능성이 높지만(이런 exe 로더 패치는 보통 게임 코드 자체를 재배치하지
 않음), 혹시 몰라 코드에도 주의사항으로 남겨뒀습니다.
+
+<!-- GTA Vice City 포팅 가능성 조사(파일 확보 시도, plugin-sdk SA/VC 구조 비교)는 extra_docs/VC_PORTABILITY.md 참고 -->
