@@ -12,6 +12,7 @@
 #include <cstdarg>
 #include <cstdint>
 #include <cstddef>
+#include <cfloat>
 #include <string>
 #include <vector>
 
@@ -139,6 +140,12 @@ constexpr wchar_t kMedialJamo[10] = {
 // across all 1775 Korean-encoded strings in the game.
 wchar_t finalJamoForByte(unsigned char b)
 {
+    // 0x3E (ㅍ, confirmed via "무릎" = 86 99 5D 85 9B 3E 5D) reliably came back
+    // as unmapped from inside the switch below despite a matching case being
+    // present - reproduced via in-game logging, never root-caused (suspected
+    // MSVC codegen quirk for this case set), fixed by handling it here
+    // instead, before the switch ever runs.
+    if (b == 0x3E) return 0x314D;
     switch (b)
     {
         case 0x3C: return 0x314C; // ㅌ - confirmed via "같이" in two independent lines (80 93 3C 60 8B 9C 60);
@@ -147,7 +154,10 @@ wchar_t finalJamoForByte(unsigned char b)
         case 0x9D: return 0x3131; // ㄱ - confirmed via "가속하려면", "죽기엔" (most common final, by far the biggest source of stray '<'/']' before this was added)
         case 0x9E: return 0x3132; // ㄲ - confirmed via "밖에" (x3), "낚이던데"
         case 0x9F: return 0x3134; // ㄴ - confirmed via "만"
-        case 0xA1: return 0x3135; // ㄶ - confirmed via "않아", "않습니다"
+        case 0xA1: return 0x3136; // ㄶ - confirmed via "않아", "않습니다"; was 0x3135 (which is
+                                   // actually ㄵ, not ㄶ - a one-character typo in the compat jamo
+                                   // constant) causing every ㄶ-final syllable (잖아, 귀찮아, ...)
+                                   // to silently render as the wrong-but-similar ㄵ-final syllable
         case 0xA2: return 0x3137; // ㄷ - confirmed via "받고", "싣는", "얻어", "믿는"
         case 0xA3: return 0x3139; // ㄹ - confirmed via "를", "살"
         case 0xA4: return 0x313A; // ㄺ - confirmed via "닭대가리", "닭살"
@@ -165,6 +175,9 @@ wchar_t finalJamoForByte(unsigned char b)
                                    // (cell_ab.png): same checkmark shape plus one extra top stroke, exactly
                                    // the real ㅅ->ㅈ relationship
         case 0xAF: return 0x314A; // ㅊ - confirmed via "몇" (9+ occurrences), "쫓는"
+        case 0x5B: return 0x314E; // ㅎ - confirmed via "그렇게" (10+ occurrences: 80 9B 5D 85 95 5B 60 80 95 5C 60);
+                                   // reuses the ASCII '[' slot, same pattern as 0x3C reusing '<' for ㅌ
+        // 0x3E (ㅍ) is handled above, before this switch - see the comment there.
         default: return 0;
     }
 }
@@ -206,6 +219,7 @@ int combineMedial(unsigned char firstByte, unsigned char secondByte)
         {0x97, 0x5C, 11}, // O + i -> OE
         {0x99, 0x5C, 16}, // U + i -> WI
         {0x96, 0x5C, 7},  // YEO + i -> YE, confirmed via "미셸" (Michelle)
+        {0x94, 0x5C, 3},  // YA + i -> YAE, confirmed via "얘기" (80 9B 5D 86 93 9F 60 20 8B 94 5C 60 80 9C 60)
         {0x97, 0x93, 9},  // O + A -> WA
         {0x99, 0x95, 14}, // U + EO -> WEO
         // 0x9C (the plain medial "I" byte) doubles as an alternate "+i"
@@ -218,6 +232,7 @@ int combineMedial(unsigned char firstByte, unsigned char secondByte)
         {0x9B, 0x9C, 19},
         {0x97, 0x9C, 11},
         {0x99, 0x9C, 16},
+        {0x94, 0x9C, 3},
     };
     for (const Pair& p : table)
         if (p.a == firstByte && p.b == secondByte) return p.result;
@@ -363,6 +378,11 @@ void LogRawBytesOnce(const char* text)
     LogLinef("[subtitle] raw bytes: %s text=\"%s\"", hex.c_str(), text);
 }
 
+// 26 * 1.5 - base size bumped up per request, on top of the actual bold
+// font file below (real bold glyphs read better than a faux-bold hack of
+// redrawing the regular weight offset a few pixels).
+constexpr float kKoreanFontSize = 39.0f;
+
 void LoadKoreanFont()
 {
     ImGuiIO& io = ImGui::GetIO();
@@ -370,33 +390,37 @@ void LoadKoreanFont()
     cfg.OversampleH = 2;
     cfg.OversampleV = 2;
     g_KoreanFont = io.Fonts->AddFontFromFileTTF(
-        "C:\\Windows\\Fonts\\malgun.ttf", 26.0f, &cfg, io.Fonts->GetGlyphRangesKorean());
+        "C:\\Windows\\Fonts\\malgunbd.ttf", kKoreanFontSize, &cfg, io.Fonts->GetGlyphRangesKorean());
     if (!g_KoreanFont)
     {
-        LogLine("[warn] malgun.ttf not found, falling back to default ImGui font (no Hangul)");
+        LogLine("[warn] malgunbd.ttf (bold) not found, falling back to regular malgun.ttf");
+        g_KoreanFont = io.Fonts->AddFontFromFileTTF(
+            "C:\\Windows\\Fonts\\malgun.ttf", kKoreanFontSize, &cfg, io.Fonts->GetGlyphRangesKorean());
+    }
+    if (!g_KoreanFont)
+    {
+        LogLine("[warn] malgun.ttf not found either, falling back to default ImGui font (no Hangul)");
         g_KoreanFont = io.Fonts->AddFontDefault();
     }
 }
 
-// Fires CMessages::AddBigMessage() with a known-good test string the
-// moment a cutscene starts, so the jamo-composition render pipeline can
-// be verified without needing real GXT dialogue. The bytes below are this
-// font's own custom jamo encoding (see DecodeJamoBytes) for "라이더"
-// (Ryder) - chosen because it's the exact sequence that was reverse
-// engineered from a real dialogue line, so a correct render here confirms
-// the decoder against a known-true answer.
-void CheckCutsceneEntry()
+// The game only calls CMessages::AddMessage/AddBigMessage for some mission
+// dialogue (e.g. in-car banter) when the native "Subtitles" option is on -
+// with it off, the message queue our overlay reads is simply never
+// populated, so there's nothing for us to intercept no matter how we draw.
+// Force the preference byte on every frame so the game always queues this
+// dialogue; our own hkDisplay hook already no-ops the native draw
+// unconditionally, so this can't cause the broken native subtitle box to
+// reappear - only our overlay ever renders.
+void ForceSubtitlesPref()
 {
-    static bool wasRunning = false;
-    bool isRunning = *CutsceneMgr_ms_running;
-    if (isRunning && !wasRunning)
+    static bool loggedOnce = false;
+    if (!loggedOnce)
     {
-        LogLine("[cutscene] entry detected, firing test subtitle");
-        static const char kHello[] =
-            "\x85\x93\x60\x8b\x9c\x60\x83\x95\x60";
-        AddBigMessage(kHello, 5000, STYLE_MIDDLE);
+        LogLinef("[subtitles-pref] current value at 0xBA678C: %d", (int)*PrefsShowSubtitles);
+        loggedOnce = true;
     }
-    wasRunning = isRunning;
+    *PrefsShowSubtitles = true;
 }
 
 std::string DecodeToUtf8(const char* text)
@@ -426,6 +450,20 @@ std::vector<std::string> g_history;
 
 bool g_anySlotActive = false;
 
+// Banners like "MISSION PASSED!", BUSTED, and WASTED go through the same
+// CMessages queue as dialogue but are plain ASCII (never translated), so
+// the game's own native font renders them correctly - only Korean text
+// needs our overlay. Skip capturing anything with no high byte at all so
+// hkDisplay's native suppression (see below) can stay off for that frame
+// and let the original banner draw normally instead of being redrawn in
+// our own font.
+bool ContainsHighByte(const char* text)
+{
+    for (const char* p = text; *p; ++p)
+        if (static_cast<unsigned char>(*p) >= 0x80) return true;
+    return false;
+}
+
 void ProcessSlot(const char* text, int slot)
 {
     if (!text || !text[0])
@@ -434,15 +472,37 @@ void ProcessSlot(const char* text, int slot)
         return;
     }
     g_anySlotActive = true;
+    if (!ContainsHighByte(text))
+    {
+        g_lastSeenPerSlot[slot].clear();
+        return;
+    }
 
     std::string utf8 = DecodeToUtf8(text);
     if (utf8.empty() || utf8 == g_lastSeenPerSlot[slot]) return;
     g_lastSeenPerSlot[slot] = utf8;
+    LogLinef("[slot %d] new line: %s", slot, utf8.c_str());
 
     if (!g_history.empty() && g_history.back() == utf8) return;
     g_history.push_back(utf8);
     if (g_history.size() > kMaxHistoryLines)
         g_history.erase(g_history.begin());
+}
+
+// Dear ImGui has no built-in text outline, so fake one by drawing the same
+// string several times at small pixel offsets in outline color underneath,
+// then the real text on top - standard "poor man's outline" technique.
+void AddOutlinedText(ImDrawList* drawList, ImFont* font, float fontSize, ImVec2 pos,
+    ImU32 textColor, ImU32 outlineColor, const char* text)
+{
+    static const ImVec2 kOffsets[] = {
+        {-1.5f,-1.5f}, {0.0f,-1.5f}, {1.5f,-1.5f},
+        {-1.5f, 0.0f},               {1.5f, 0.0f},
+        {-1.5f, 1.5f}, {0.0f, 1.5f}, {1.5f, 1.5f},
+    };
+    for (const ImVec2& o : kOffsets)
+        drawList->AddText(font, fontSize, ImVec2(pos.x + o.x, pos.y + o.y), outlineColor, text);
+    drawList->AddText(font, fontSize, pos, textColor, text);
 }
 
 void DrawDialogueSubtitles()
@@ -468,14 +528,20 @@ void DrawDialogueSubtitles()
     ImGui::SetNextWindowPos(
         ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.82f),
         ImGuiCond_Always, ImVec2(0.5f, 1.0f));
-    ImGui::SetNextWindowBgAlpha(0.6f);
     ImGui::PushFont(g_KoreanFont);
     ImGui::Begin("##korean_sub_log", nullptr,
         ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs |
         ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoFocusOnAppearing |
-        ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove);
+        ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBackground);
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
     for (const std::string& line : g_history)
-        ImGui::TextUnformatted(line.c_str());
+    {
+        ImVec2 pos = ImGui::GetCursorScreenPos();
+        ImVec2 size = g_KoreanFont->CalcTextSizeA(kKoreanFontSize, FLT_MAX, 0.0f, line.c_str());
+        AddOutlinedText(drawList, g_KoreanFont, kKoreanFontSize, pos,
+            IM_COL32(255, 255, 255, 255), IM_COL32(0, 0, 0, 255), line.c_str());
+        ImGui::Dummy(size);
+    }
     ImGui::End();
     ImGui::PopFont();
 }
@@ -512,7 +578,7 @@ HRESULT __stdcall hkEndScene(IDirect3DDevice9* device)
     EnsureImGuiInit(device);
     UpdateDisplaySize(device);
 
-    CheckCutsceneEntry();
+    ForceSubtitlesPref();
 
     ImGui_ImplDX9_NewFrame();
     ImGui::NewFrame();
@@ -523,12 +589,36 @@ HRESULT __stdcall hkEndScene(IDirect3DDevice9* device)
     return oEndScene(device);
 }
 
-// Swallows the native subtitle draw call entirely. CMessages::Process
-// (unhooked, still runs normally) keeps advancing/expiring messages, so
-// BIGMessages/BriefMessages stay valid for our own overlay to read - only
-// the broken-glyph native rendering is suppressed.
-void __cdecl hkDisplay(bool)
+// True if any currently active message (mission dialogue or an ASCII-only
+// banner like MISSION PASSED/BUSTED/WASTED) actually contains Korean bytes.
+// Display() draws every active message in one call, so this has to check
+// all of them, not just the newest one, before deciding whether it's safe
+// to let the native call through for this frame.
+bool AnyActiveMessageHasKorean()
 {
+    for (eMessageStyle style : kDialogueStyles)
+    {
+        const char* text = BIGMessages[style].m_Current.m_pText;
+        if (text && text[0] && ContainsHighByte(text)) return true;
+    }
+    for (int i = 0; i < kBriefMessageCount; ++i)
+    {
+        const char* text = BriefMessages[i].m_pText;
+        if (text && text[0] && ContainsHighByte(text)) return true;
+    }
+    return false;
+}
+
+// Suppresses the native subtitle draw only when Korean text is actually on
+// screen (where the native font would render broken glyphs) - plain-ASCII
+// banners like MISSION PASSED/BUSTED/WASTED are left to the native call so
+// they keep their normal game styling instead of being redrawn in ours.
+// CMessages::Process (unhooked, still runs normally) keeps
+// advancing/expiring messages regardless of which path draws them.
+void __cdecl hkDisplay(bool arg)
+{
+    if (!AnyActiveMessageHasKorean())
+        oDisplay(arg);
 }
 
 HRESULT __stdcall hkReset(IDirect3DDevice9* device, D3DPRESENT_PARAMETERS* pp)

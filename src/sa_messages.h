@@ -62,3 +62,14 @@ inline AddBigMessage_t const AddBigMessage = reinterpret_cast<AddBigMessage_t>(0
 // native draw entirely without breaking the message queue our overlay
 // reads from.
 inline constexpr uintptr_t kCMessagesDisplayAddr = 0x69EFC0;
+
+// "Subtitles" preference byte (Options > Display > Subtitles on/off).
+// UNVERIFIED - sourced from the GTAMods Wiki memory address list, not
+// plugin-sdk, so treat with caution until confirmed in-game (see the
+// diagnostic log in ForceSubtitlesPref in dllmain.cpp). The game only
+// calls CMessages::AddMessage/AddBigMessage for a subset of dialogue
+// (in-car mission banter) when this preference is on - when it's off,
+// the message queue our overlay reads never gets populated at all, so
+// suppressing the native draw isn't enough; the pref itself must read
+// as "on" for our overlay to have anything to show.
+inline bool* const PrefsShowSubtitles = reinterpret_cast<bool*>(0xBA678C);
