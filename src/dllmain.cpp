@@ -437,18 +437,17 @@ std::string DecodeToUtf8(const char* text)
     return utf8;
 }
 
-// Scrolling subtitle log: newest line at the bottom, capped at 2 visible
-// lines, similar to how the base game's own message stack works. Every
-// message source (BIGMessages styles + BriefMessages slots) is tracked
-// independently so a message only gets appended to history once, right
-// when it first appears - not re-appended every single frame it stays
-// on screen.
-constexpr int kMaxSlots = 7 /*kDialogueStyles*/ + kBriefMessageCount;
-constexpr size_t kMaxHistoryLines = 1;
-std::string g_lastSeenPerSlot[kMaxSlots];
-std::vector<std::string> g_history;
-
-bool g_anySlotActive = false;
+// Only one subtitle line is ever shown at a time. This used to track every
+// BIGMessages/BriefMessages slot independently and append to a history log
+// as each slot's text changed, but the game can keep an OLD style slot
+// "active" (non-expired, m_pText still set) for a frame or two after a NEW
+// line has already started in a different slot - since slot iteration order
+// has nothing to do with recency, that let the old line flash back on
+// screen right after being replaced. Instead, every frame we scan all
+// active slots and pick the one with the latest m_dwStartTime - that is
+// always the most recently queued line, regardless of what other slots
+// still happen to be holding stale-but-technically-active text.
+std::string g_currentLine;
 
 // Banners like "MISSION PASSED!", BUSTED, and WASTED go through the same
 // CMessages queue as dialogue but are plain ASCII (never translated), so
@@ -464,29 +463,60 @@ bool ContainsHighByte(const char* text)
     return false;
 }
 
-void ProcessSlot(const char* text, int slot)
+const tMessage* PickCurrentMessage()
 {
-    if (!text || !text[0])
+    const tMessage* best = nullptr;
+    for (eMessageStyle style : kDialogueStyles)
     {
-        g_lastSeenPerSlot[slot].clear();
-        return;
+        const tMessage& m = BIGMessages[style].m_Current;
+        if (m.m_pText && m.m_pText[0] && ContainsHighByte(m.m_pText) &&
+            (!best || m.m_dwStartTime >= best->m_dwStartTime))
+            best = &m;
     }
-    g_anySlotActive = true;
-    if (!ContainsHighByte(text))
+    for (int i = 0; i < kBriefMessageCount; ++i)
     {
-        g_lastSeenPerSlot[slot].clear();
-        return;
+        const tMessage& m = BriefMessages[i];
+        if (m.m_pText && m.m_pText[0] && ContainsHighByte(m.m_pText) &&
+            (!best || m.m_dwStartTime >= best->m_dwStartTime))
+            best = &m;
     }
+    return best;
+}
 
-    std::string utf8 = DecodeToUtf8(text);
-    if (utf8.empty() || utf8 == g_lastSeenPerSlot[slot]) return;
-    g_lastSeenPerSlot[slot] = utf8;
-    LogLinef("[slot %d] new line: %s", slot, utf8.c_str());
+// Diagnostic dump for the A->B flicker: prints every currently-active
+// slot's raw pointer, start time, and text whenever the *chosen* slot (by
+// identity, not content) or that slot's start time changes. A one-frame
+// flicker is too fast to screenshot, but it always shows up here as an
+// extra selection change between two log lines a frame or two apart -
+// this lets us see whether the old slot's m_dwStartTime is genuinely
+// still ahead of the new one for a frame (buffer/timing race) rather than
+// guessing.
+void LogSubtitleSelectionIfChanged(const tMessage* msg)
+{
+    static const tMessage* lastMsg = nullptr;
+    static unsigned int lastStart = 0xFFFFFFFF;
+    unsigned int curStart = msg ? msg->m_dwStartTime : 0;
+    if (msg == lastMsg && curStart == lastStart) return;
+    lastMsg = msg;
+    lastStart = curStart;
 
-    if (!g_history.empty() && g_history.back() == utf8) return;
-    g_history.push_back(utf8);
-    if (g_history.size() > kMaxHistoryLines)
-        g_history.erase(g_history.begin());
+    LogLine("[subtitle-debug] selection changed, active slots:");
+    for (eMessageStyle style : kDialogueStyles)
+    {
+        const tMessage& m = BIGMessages[style].m_Current;
+        if (m.m_pText && m.m_pText[0])
+            LogLinef("  [big style=%d]%s ptr=0x%x start=%u text=%s",
+                (int)style, (&m == msg) ? " <-- chosen" : "",
+                (unsigned int)(uintptr_t)m.m_pText, m.m_dwStartTime, m.m_pText);
+    }
+    for (int i = 0; i < kBriefMessageCount; ++i)
+    {
+        const tMessage& m = BriefMessages[i];
+        if (m.m_pText && m.m_pText[0])
+            LogLinef("  [brief idx=%d]%s ptr=0x%x start=%u text=%s",
+                i, (&m == msg) ? " <-- chosen" : "",
+                (unsigned int)(uintptr_t)m.m_pText, m.m_dwStartTime, m.m_pText);
+    }
 }
 
 // Dear ImGui has no built-in text outline, so fake one by drawing the same
@@ -507,43 +537,62 @@ void AddOutlinedText(ImDrawList* drawList, ImFont* font, float fontSize, ImVec2 
 
 void DrawDialogueSubtitles()
 {
-    g_anySlotActive = false;
-    int slot = 0;
-    for (eMessageStyle style : kDialogueStyles)
-        ProcessSlot(BIGMessages[style].m_Current.m_pText, slot++);
-    for (int i = 0; i < kBriefMessageCount; ++i)
-        ProcessSlot(BriefMessages[i].m_pText, slot++);
+    // ESC/pause menu is up - hide the overlay entirely while it's open, and
+    // resume showing whatever is current once the player goes back in-game
+    // (we don't touch g_currentLine here, so PickCurrentMessage() just
+    // re-evaluates live game state on the next unpaused frame).
+    if (*MenuManager_bMenuActive) return;
 
-    // The native game cleared every message slot (its own subtitle would
-    // have disappeared too) - drop our own history instead of leaving the
-    // last line stuck on screen forever.
-    if (!g_anySlotActive)
+    const tMessage* msg = PickCurrentMessage();
+    LogSubtitleSelectionIfChanged(msg);
+    if (!msg)
     {
-        g_history.clear();
+        g_currentLine.clear();
         return;
     }
-    if (g_history.empty()) return;
 
+    std::string utf8 = DecodeToUtf8(msg->m_pText);
+    if (utf8.empty())
+    {
+        g_currentLine.clear();
+        return;
+    }
+    if (utf8 != g_currentLine)
+    {
+        LogLinef("[subtitle] now showing: %s", utf8.c_str());
+        g_currentLine = utf8;
+    }
+
+    // ImGuiWindowFlags_AlwaysAutoResize grows the window to fit content, but
+    // that resize is only reflected a frame after the content that caused it
+    // was submitted - so the very first frame a longer line replaces a
+    // shorter one, it was still being clipped to the previous (narrower)
+    // window rect, cutting the new line short for one frame before it
+    // "caught up" on the next. Sidestepping the lag entirely by measuring
+    // the text and setting the window size explicitly every frame, instead
+    // of letting ImGui auto-size it a frame late.
     ImGuiIO& io = ImGui::GetIO();
+    ImVec2 textSize = g_KoreanFont->CalcTextSizeA(kKoreanFontSize, FLT_MAX, 0.0f, g_currentLine.c_str());
+    constexpr float kOutlinePad = 4.0f; // room for AddOutlinedText's outline offset
+    ImVec2 windowSize(textSize.x + kOutlinePad * 2.0f, textSize.y + kOutlinePad * 2.0f);
+
     ImGui::SetNextWindowPos(
         ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.82f),
         ImGuiCond_Always, ImVec2(0.5f, 1.0f));
+    ImGui::SetNextWindowSize(windowSize, ImGuiCond_Always);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(kOutlinePad, kOutlinePad));
     ImGui::PushFont(g_KoreanFont);
     ImGui::Begin("##korean_sub_log", nullptr,
         ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs |
-        ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoFocusOnAppearing |
+        ImGuiWindowFlags_NoFocusOnAppearing |
         ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBackground);
     ImDrawList* drawList = ImGui::GetWindowDrawList();
-    for (const std::string& line : g_history)
-    {
-        ImVec2 pos = ImGui::GetCursorScreenPos();
-        ImVec2 size = g_KoreanFont->CalcTextSizeA(kKoreanFontSize, FLT_MAX, 0.0f, line.c_str());
-        AddOutlinedText(drawList, g_KoreanFont, kKoreanFontSize, pos,
-            IM_COL32(255, 255, 255, 255), IM_COL32(0, 0, 0, 255), line.c_str());
-        ImGui::Dummy(size);
-    }
+    ImVec2 pos = ImGui::GetCursorScreenPos();
+    AddOutlinedText(drawList, g_KoreanFont, kKoreanFontSize, pos,
+        IM_COL32(255, 255, 255, 255), IM_COL32(0, 0, 0, 255), g_currentLine.c_str());
     ImGui::End();
     ImGui::PopFont();
+    ImGui::PopStyleVar();
 }
 
 void EnsureImGuiInit(IDirect3DDevice9* device)
@@ -589,35 +638,69 @@ HRESULT __stdcall hkEndScene(IDirect3DDevice9* device)
     return oEndScene(device);
 }
 
-// True if any currently active message (mission dialogue or an ASCII-only
-// banner like MISSION PASSED/BUSTED/WASTED) actually contains Korean bytes.
-// Display() draws every active message in one call, so this has to check
-// all of them, not just the newest one, before deciding whether it's safe
-// to let the native call through for this frame.
-bool AnyActiveMessageHasKorean()
-{
-    for (eMessageStyle style : kDialogueStyles)
-    {
-        const char* text = BIGMessages[style].m_Current.m_pText;
-        if (text && text[0] && ContainsHighByte(text)) return true;
-    }
-    for (int i = 0; i < kBriefMessageCount; ++i)
-    {
-        const char* text = BriefMessages[i].m_pText;
-        if (text && text[0] && ContainsHighByte(text)) return true;
-    }
-    return false;
-}
+// The [display-debug] log proved the earlier fixed ~166ms (10-frame)
+// cooldown was far too short: native gets ALLOWED well before the next
+// Korean line's m_pText appears, meaning the native renderer keeps
+// showing the OLD line for its own declared duration, completely
+// independent of whether m_pText currently reads non-null - clearing
+// m_pText early (to let the next line's raw bytes be written) does not
+// mean the native display system is done showing it. That's the actual
+// source of the reported overlap: for a real stretch of time, native is
+// still legitimately drawing the old (broken) line by its own clock while
+// our overlay has already moved on.
+//
+// Fix: base the suppression window on that message's OWN declared
+// display duration (tMessage::m_dwTime, milliseconds) measured against
+// real wall-clock time (GetTickCount), instead of a guessed frame count -
+// so we keep blocking native for exactly as long as native itself intends
+// to keep the line up, then release it once that time has genuinely
+// passed.
+DWORD g_nativeSuppressUntilTick = 0;
+constexpr DWORD kFallbackSuppressMs = 3000; // used if m_dwTime looks bogus (0)
 
-// Suppresses the native subtitle draw only when Korean text is actually on
-// screen (where the native font would render broken glyphs) - plain-ASCII
-// banners like MISSION PASSED/BUSTED/WASTED are left to the native call so
-// they keep their normal game styling instead of being redrawn in ours.
-// CMessages::Process (unhooked, still runs normally) keeps
-// advancing/expiring messages regardless of which path draws them.
+// The [display-debug] log caught native being ALLOWED exactly 6ms after
+// `until` on one real transition ("아 제발, 좀 봐줘." -> "가서 우리 구역을
+// 좀 붐비게 해야지.") - m_dwTime cutting it that close means any scripted
+// (deterministic) dialogue sequence can reliably hit the same knife-edge
+// timing every time it's replayed, which is exactly why it looked
+// consistent/repeatable to the user despite only affecting specific
+// transitions. Pad the window well past the message's own declared
+// duration so real clock jitter can't win that race.
+constexpr DWORD kSuppressSafetyMarginMs = 500;
+
+// Suppresses the native subtitle draw while a Korean message is active,
+// and for the remainder of that message's own declared display duration
+// afterward - plain-ASCII banners like MISSION PASSED/BUSTED/WASTED are
+// otherwise left to the native call so they keep their normal game
+// styling instead of being redrawn in ours. CMessages::Process (unhooked,
+// still runs normally) keeps advancing/expiring messages regardless of
+// which path draws them.
 void __cdecl hkDisplay(bool arg)
 {
-    if (!AnyActiveMessageHasKorean())
+    const tMessage* msg = PickCurrentMessage();
+    DWORD now = GetTickCount();
+
+    if (msg)
+    {
+        DWORD duration = (msg->m_dwTime > 0) ? msg->m_dwTime : kFallbackSuppressMs;
+        g_nativeSuppressUntilTick = now + duration + kSuppressSafetyMarginMs;
+    }
+
+    bool suppress = (msg != nullptr) || (now < g_nativeSuppressUntilTick);
+
+    // Diagnostic for the reported overlap between the old (native, broken)
+    // line and the new (our overlay) line: only logs when the suppress/
+    // allow decision actually flips, so we can see directly when the
+    // native draw call is let through relative to a subtitle transition.
+    static bool lastSuppress = true;
+    if (suppress != lastSuppress)
+    {
+        LogLinef("[display-debug] native draw %s (korean=%d until=%u now=%u)",
+            suppress ? "SUPPRESSED" : "ALLOWED", (int)(msg != nullptr), g_nativeSuppressUntilTick, now);
+        lastSuppress = suppress;
+    }
+
+    if (!suppress)
         oDisplay(arg);
 }
 

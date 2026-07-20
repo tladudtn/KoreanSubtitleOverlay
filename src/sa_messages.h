@@ -73,3 +73,10 @@ inline constexpr uintptr_t kCMessagesDisplayAddr = 0x69EFC0;
 // suppressing the native draw isn't enough; the pref itself must read
 // as "on" for our overlay to have anything to show.
 inline bool* const PrefsShowSubtitles = reinterpret_cast<bool*>(0xBA678C);
+
+// CMenuManager::m_bMenuActive - true while the pause/frontend menu (ESC)
+// is open. Verified from plugin-sdk (plugin_sa/game_sa/CMenuManager.h/.cpp):
+// FrontEndMenuManager singleton at 0xBA6748, m_bMenuActive at offset 0x5C
+// (confirmed by the VALIDATE_OFFSET(CMenuManager, m_bMenuActive, 0x5C)
+// assertion in the header), so the absolute address is 0xBA6748 + 0x5C.
+inline bool* const MenuManager_bMenuActive = reinterpret_cast<bool*>(0xBA6748 + 0x5C);
