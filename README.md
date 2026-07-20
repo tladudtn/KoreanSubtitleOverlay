@@ -3,8 +3,14 @@
 GTA 산안드레아스(1.0 US)를 커뮤니티 한글패치와 함께 플레이할 때 깨져서
 나오는 인게임 자막을 고쳐주는 modloader용 ASI 플러그인입니다.
 
-일반 사용자를 위한 쉬운 설명은 [가이드.md](가이드.md)를 참고하세요.
+일반 사용자를 위한 쉬운 설명은 [docs/가이드.md](docs/가이드.md)를 참고하세요.
 이 문서는 빌드/개발 관련 내용을 다룹니다.
+
+## 스크린샷
+
+![체포(busted) 상황에서 정상적으로 렌더링된 한글 자막 예시](docs/screenshots/busted-example.jpg)
+
+체포(busted) 상황에서도 대사가 오버레이로 정상적으로 렌더링되는 모습입니다.
 
 ## 문제 상황
 
@@ -83,7 +89,7 @@ GTA-SA-Dev/
    생성되어 초기화/디버그 로그를 확인할 수 있습니다.
 
 전체 바이트 매핑 근거표와 검증 방법론은
-[DECODING_NOTES.md](DECODING_NOTES.md)를 참고하세요.
+[docs/DECODING_NOTES.md](docs/DECODING_NOTES.md)를 참고하세요.
 
 ## 알려진 제한사항
 
