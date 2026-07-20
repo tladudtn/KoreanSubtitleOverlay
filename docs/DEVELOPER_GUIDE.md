@@ -35,6 +35,22 @@ C:\Users\SYS\Documents\GTA-SA-Dev\
 - 배포 위치: `modloader\_BASIC\KoreanSubtitleOverlay\KoreanSubtitleOverlay.asi`
 - 원본 한글패치 에셋(참조용): `modloader\_BASIC\Korean_Patch\{american.gxt, fonts.dat, fonts.txd}`
 
+### 이 저장소만 clone해도 빌드가 완결되는지
+
+`KoreanSubtitleOverlay.vcxproj`가 참조하는 로컬 파일은 `src\dllmain.cpp`,
+`src\sa_messages.h` 둘뿐이고 둘 다 이 저장소 안에 있다 - 나머지 참조
+(`..\imgui\*`, `..\minhook\*`)는 전부 [README.md](../README.md)의
+빌드 의존성에 문서화된 사이드로드 clone이다. 소스의 `#include`도
+표준 라이브러리/Windows SDK/imgui·MinHook뿐이라 미문서화된 숨은
+의존성은 없다. `.gitignore`는 빌드 산출물(`bin/`, obj 폴더,
+`*.pdb`/`*.obj`/`*.tlog` 등)과 개인용 `*.local.md`만 정확히 걸러낸다.
+`.sln`은 없지만 `.vcxproj`를 VS2022에서 바로 열면 되므로 문제없다.
+
+즉 README의 안내(`imgui`/`minhook`을 옆에 clone)만 따라 하면, 이
+저장소 하나만 클론해서 바로 빌드할 수 있는 상태다. `FontExtract`/
+`txdedit`(HD 폰트 병합용 별도 도구, WORK_LOG.md Part 2 참고)는 이 ASI
+빌드 자체에는 필요 없다.
+
 ---
 
 ## 후킹 구조 / 오버레이 렌더링 구조
