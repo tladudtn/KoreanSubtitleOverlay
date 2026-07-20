@@ -109,7 +109,9 @@ GTA-SA-Dev/
 전체 바이트 매핑 근거표와 검증 방법론은
 [docs/DECODING_NOTES.md](docs/DECODING_NOTES.md)를, 후킹 지점(EndScene/
 Reset/CMessages::Display)과 오버레이 렌더링 구조 자체는
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)를 참고하세요.
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)를 참고하세요. 로그 읽는 법과
+개발용 도구(gxt_scan, FontExtract) 사용법은
+[docs/DEBUGGING.md](docs/DEBUGGING.md)에 정리되어 있습니다.
 
 이 자막 오버레이와는 별개로, WASTED/BUSTED/지역명/차량명 등 `fonts.txd`
 기반 UI 텍스트에 한글패치와 고해상도 폰트 모드를 동시에 적용한 방법은

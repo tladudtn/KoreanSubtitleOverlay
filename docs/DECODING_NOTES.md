@@ -6,7 +6,8 @@
 [가이드.md](가이드.md) 참고. 이 문서는 자모 디코딩 로직의 "왜 이렇게
 매핑했는지", "왜 이렇게 고쳤는지"의 근거를 전부 담는다 - 후킹/렌더링
 구조 자체는 [ARCHITECTURE.md](ARCHITECTURE.md), fonts.txd HD 병합은
-[HD_FONT_MERGE.md](HD_FONT_MERGE.md) 참고.
+[HD_FONT_MERGE.md](HD_FONT_MERGE.md), 아래 도구들의 사용법을 모아놓은
+정리본은 [DEBUGGING.md](DEBUGGING.md) 참고.
 
 ## 프로젝트 구조
 
@@ -96,71 +97,29 @@ ImGui로 그려서 네이티브 드로우를 대체한다.
 
 ## 검증 방법론
 
-### 1) 오프라인 GXT 전수 스캔 (`tools/gxt_scan.cpp`)
+바이트 매핑을 확정하기 위해 세 가지 방법을 조합했다. 각 도구의 실제
+빌드/실행법과 출력 해석은 [DEBUGGING.md](DEBUGGING.md)에 모아뒀고,
+여기서는 "무엇을, 왜 그렇게 검증했는지"만 정리한다.
 
-`dllmain.cpp`와 완전히 동일한 디코드 로직을 복제해서, 실제 게임을 켜지
-않고 `american.gxt` 파일 자체를 파싱해 모든 대사 문자열(127개 테이블,
-총 1775개 한글 인코딩 문자열)에 대해 디코딩을 돌려보는 진단 도구.
-미매핑 바이트를 만나면 hex + 디코딩 결과를 리포트에 남긴다.
-
-**GXT 파일 구조** (SA 표준): `TABL`(테이블명+오프셋 목록) → 각 테이블마다
-`TKEY`(8바이트 엔트리: offset+hash) → `TDAT`(실제 null-terminated 문자열
-블롭). TKEY 영역을 문자열로 착각해서 스캔하면 노이즈가 대량 발생하니
-반드시 TDAT 영역만 스캔해야 함 (초기 버전에서 이 실수로 128개의 가짜
-미매핑 바이트가 나왔었음).
-
-빌드/실행법:
-```
-call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
-cl.exe /EHsc /nologo /Fe:gxt_scan.exe tools\gxt_scan.cpp /link user32.lib
-
-gxt_scan.exe "<게임경로>\modloader\_BASIC\Korean_Patch\american.gxt" report.txt
-```
-마지막 줄 요약에 `distinct unmapped byte values`가 0이면 전수 검증 통과.
-**주의**: `finalJamoForByte`/`combineMedial` 테이블은 `dllmain.cpp`와
-수동으로 동기화해야 함(자동 공유 안 됨) - `dllmain.cpp`를 고치면 이
-파일도 같이 고칠 것.
-
-### 2) FontExtract 글리프 직접 대조
-
-`../FontExtract`가 `fonts.txd`의 각 32x32 글리프 셀을 `cell_XX.png`로
-개별 추출해준다 (`output/1_font1_cells/cell_XX.png`, XX=hex 바이트).
-**`font1`이 실제 자모 폰트**(font2는 WASTED/BUSTED/MISSION PASSED 고딕체 +
-지역명/차량명용 일반 서체 - 이후 세션에서 확인됨, [HD_FONT_MERGE.md](HD_FONT_MERGE.md)
-참고). 이미지를
-직접 열어서(Read 툴로 - Claude는 이미지를 볼 수 있음) 이미 확정된
-바이트의 글리프 모양과 비교하면 텍스트 근거가 약한 바이트도 검증 가능.
-격자 전체 이미지(`_grid.png`, 빨간 격자선 포함)를 크롭해서 여러 바이트를
-한 번에 비교하면 셀 경계 정렬도 같이 확인된다(받침 글리프는 셀 하단에
-배치되는 게 정상이라 "잘린 것처럼" 보이는 건 버그가 아님).
-
-### 3) 인게임 로그 + ffmpeg 프레임 단위 영상 대조
-
-디코딩이 아니라 "언제, 어떤 순서로 그려지는가" 계열 버그(자막 전환 시
-겹침/깜빡임 등)는 바이트 매핑 검증만으로는 못 잡는다. 이런 건 실제
-플레이 중 타이밍이 문제라서, 이번 세션에서 쓴 방법은:
-
-1. `dllmain.cpp`에 상태 전환이 있을 때만 찍는 디버그 로그를 추가한다
-   (매 프레임 로그하면 로그가 너무 커지므로, "선택된 슬롯이 바뀔 때만",
-   "네이티브 억제 on/off가 바뀔 때만" 식으로 트리거를 걸었다 - 아래
-   `LogSubtitleSelectionIfChanged`, `hkDisplay`의 `[display-debug]` 로그 참고).
-2. 사용자가 문제되는 구간을 화면 녹화(Xbox Game Bar 등, `C:\Users\SYS\Videos`)한다.
-3. `ffmpeg`(winget으로 설치: `winget install --id Gyan.FFmpeg`)로 영상에서
-   자막이 나오는 화면 하단 영역만 crop해서 **60fps 그대로(다운샘플링 없이)**
-   프레임 이미지로 추출한다 (`ffmpeg -i in.mp4 -vf "crop=W:H:X:Y" f_%05d.jpg`).
-4. 프레임 수가 많아서(51초 영상 기준 3097장) 한 장씩 보는 대신, ffmpeg의
-   `tile` 필터로 여러 프레임을 한 장의 콘택트시트 이미지로 묶어서
-   (`scale=작게,tile=5x50` 식) 한 번에 훑어본다. 이러면 Read 툴 호출
-   몇 번으로 전체 영상을 다 확인할 수 있다.
-5. 로그의 타임스탬프(`GetTickCount()` 기반)와 영상 속 대사 내용을 나란히
-   대조해서, "그 순간 실제로 무슨 일이 있었는지"를 재구성한다.
-
-**주의**: 콘택트시트를 너무 작게 스케일하면(예: 384x30px 셀) 사람 눈으로
-훑어볼 때 "겹쳐 보이는" 것 같은 명백한 이상은 잘 보여도, "문장이 한 글자
-덜 나온" 것처럼 텍스트 내용을 한 글자 한 글자 비교해야 알 수 있는 미묘한
-차이는 놓치기 쉽다 - 실제로 이번 세션에서 그렇게 한 번 놓친 사례가 있었고,
-사용자가 스크린샷으로 직접 짚어준 뒤에야 발견했다. 의심되는 특정 구간은
-스케일을 낮추지 말고 개별 프레임을 확대해서 봐야 한다.
+1. **오프라인 GXT 전수 스캔** (`tools/gxt_scan.cpp`) - `dllmain.cpp`와
+   완전히 동일한 디코드 로직을 복제해서, 실제 게임을 켜지 않고
+   `american.gxt` 파일 자체를 파싱해 모든 대사 문자열(127개 테이블,
+   총 1775개 한글 인코딩 문자열)을 한 번에 검사한다. 미션 하나하나
+   직접 플레이해서 확인하는 것보다 훨씬 철저하다. 다만 `dllmain.cpp`의
+   `finalJamoForByte`/`combineMedial` 테이블을 고치면 `gxt_scan.cpp`
+   쪽도 수동으로 같이 고쳐야 한다(자동 공유 안 됨).
+2. **FontExtract 글리프 직접 대조** - 텍스트 근거가 약하거나 없는
+   바이트를, 이미 확정된 바이트의 실제 글리프 모양과 눈으로 비교해
+   검증한다. **`font1`이 실제 자모 폰트**(font2는 WASTED/BUSTED/MISSION
+   PASSED 고딕체 + 지역명/차량명용 일반 서체 - 이후 세션에서 확인됨,
+   [HD_FONT_MERGE.md](HD_FONT_MERGE.md) 참고).
+3. **인게임 로그 + ffmpeg 프레임 단위 영상 대조** - 디코딩이 아니라
+   "언제, 어떤 순서로 그려지는가" 계열 버그(자막 전환 시 겹침/깜빡임
+   등)는 바이트 매핑 검증만으로는 못 잡는다. 이런 건 실제 플레이 중
+   타이밍이 문제라서, 화면 녹화를 프레임 단위로 로그와 대조하는 별도
+   절차를 썼다 - 구체적인 단계와 주의사항은
+   [DEBUGGING.md](DEBUGGING.md#4-타이밍-버그-화면-녹화--ffmpeg-프레임-대조)
+   참고.
 
 ## 오버레이 렌더링 로직 (자막 선택 / 네이티브 억제 / 전환 버그)
 
