@@ -63,11 +63,24 @@ void LogLinef(const char* fmt, ...)
 }
 
 // GXT strings embed inline formatting tags like "~z~", "~1~", "~s~" that
-// the native CFont renderer interprets as color/substitution codes and
-// strips before drawing. CP949 is a variable-width (double-byte) encoding,
-// so leaving one of these single-byte ASCII tags in place shifts the
-// byte-pairing for every Korean character that follows it, corrupting the
-// rest of the string. Strip anything matching ~...~ before decoding.
+// the native CFont renderer interprets specially and removes from the
+// visible text before drawing. CP949 is a variable-width (double-byte)
+// encoding, so leaving one of these single-byte ASCII tags in place shifts
+// the byte-pairing for every Korean character that follows it, corrupting
+// the rest of the string, so every tag must come out of the byte stream
+// before jamo-decoding - but not all tags mean the same thing:
+//
+//  - Pure style/color tags (~z~, ~r~, ~SPHERE~, ...) carry no displayable
+//    content - delete them outright.
+//  - Numbered placeholder tags (~1~) are how the native engine splices a
+//    runtime value into HUD/stat text (e.g. "거리: ~1~.~1~m 높이: ~1~.~1~m
+//    회전: ~1~ 선회: ~1~" for a stunt-bike HUD) - GTA SA always writes the
+//    literal digit "1" here regardless of position; it's a generic "next
+//    number" marker, not an index. The actual values live in
+//    tMessage::m_dwNumber[6] (sa_messages.h) and get consumed in the same
+//    left-to-right order the tags appear in. Deleting these outright
+//    instead of substituting was the original bug here: "~1~.~1~m"
+//    silently collapsed to just ".m", with every number gone.
 //
 // CP949 trail bytes can legitimately equal '~' (0x7E), so only treat a
 // ~...~ span as a tag when the enclosed run is short and pure ASCII -
@@ -82,9 +95,15 @@ bool LooksLikeGxtTag(const char* begin, const char* end)
     return true;
 }
 
-std::string StripGxtTags(const char* text)
+bool IsNumberedGxtTag(const char* begin, const char* end)
+{
+    return (end - begin) == 1 && *begin >= '0' && *begin <= '9';
+}
+
+std::string ResolveGxtTags(const char* text, const int* numbers, int numberCount)
 {
     std::string out;
+    int nextNumber = 0;
     for (const char* p = text; *p; )
     {
         if (*p == '~')
@@ -93,6 +112,12 @@ std::string StripGxtTags(const char* text)
             while (*end && *end != '~') ++end;
             if (*end == '~' && LooksLikeGxtTag(p + 1, end))
             {
+                if (IsNumberedGxtTag(p + 1, end) && nextNumber < numberCount)
+                {
+                    char buf[16];
+                    wsprintfA(buf, "%d", numbers[nextNumber++]);
+                    out += buf;
+                }
                 p = end + 1;
                 continue;
             }
@@ -282,6 +307,20 @@ std::wstring DecodeJamoBytes(const unsigned char* text)
     while (i < len)
     {
         unsigned char b0 = text[i];
+
+        // This font redraws a handful of low-ASCII cells as different
+        // glyphs than standard ASCII (same idea as 0x3C->ㅌ and 0x5B->ㅎ
+        // below, which are jamo *finals* instead of standalone bytes):
+        // 0x7C's cell is a degree sign, not '|' - confirmed both via
+        // FontExtract (cell_7c.png shows "°") and a real in-game stunt
+        // HUD string ("회전: ~1~°") that rendered as a bare "|" before
+        // this was added.
+        if (b0 == 0x7C)
+        {
+            out += static_cast<wchar_t>(0x00B0); // °
+            ++i;
+            continue;
+        }
         if (b0 < 0x80)
         {
             out += static_cast<wchar_t>(b0);
@@ -362,7 +401,7 @@ std::wstring DecodeJamoBytes(const unsigned char* text)
     return out;
 }
 
-void LogRawBytesOnce(const char* text)
+void LogRawBytesOnce(const char* text, const int* numbers, int numberCount)
 {
     static std::string lastLogged;
     if (!text || text == lastLogged) return;
@@ -375,7 +414,19 @@ void LogRawBytesOnce(const char* text)
         wsprintfA(b, "%02x ", (int)*p);
         hex += b;
     }
-    LogLinef("[subtitle] raw bytes: %s text=\"%s\"", hex.c_str(), text);
+
+    // Logged alongside the raw text so a ~1~-bearing message (HUD/stat
+    // text with runtime-substituted numbers, see ResolveGxtTags above) can
+    // be checked against what actually got spliced in, instead of having
+    // to guess after the fact.
+    std::string nums;
+    for (int i = 0; i < numberCount; ++i)
+    {
+        char b[16];
+        wsprintfA(b, "%d ", numbers[i]);
+        nums += b;
+    }
+    LogLinef("[subtitle] raw bytes: %s text=\"%s\" numbers=[%s]", hex.c_str(), text, nums.c_str());
 }
 
 // 26 * 1.5 - base size bumped up per request, on top of the actual bold
@@ -423,11 +474,11 @@ void ForceSubtitlesPref()
     *PrefsShowSubtitles = true;
 }
 
-std::string DecodeToUtf8(const char* text)
+std::string DecodeToUtf8(const char* text, const int* numbers, int numberCount)
 {
-    LogRawBytesOnce(text);
-    std::string stripped = StripGxtTags(text);
-    std::wstring wide = DecodeJamoBytes(reinterpret_cast<const unsigned char*>(stripped.c_str()));
+    LogRawBytesOnce(text, numbers, numberCount);
+    std::string resolved = ResolveGxtTags(text, numbers, numberCount);
+    std::wstring wide = DecodeJamoBytes(reinterpret_cast<const unsigned char*>(resolved.c_str()));
     if (wide.empty()) return {};
     int ulen = WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), -1, nullptr, 0, nullptr, nullptr);
     if (ulen <= 0) return {};
@@ -551,7 +602,7 @@ void DrawDialogueSubtitles()
         return;
     }
 
-    std::string utf8 = DecodeToUtf8(msg->m_pText);
+    std::string utf8 = DecodeToUtf8(msg->m_pText, msg->m_dwNumber, 6);
     if (utf8.empty())
     {
         g_currentLine.clear();
