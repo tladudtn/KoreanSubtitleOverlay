@@ -71,6 +71,9 @@ Steps:
 3. Launch the game. A `KoreanSubtitleOverlay.log` will appear next to the
    `.asi` with init/debug output if something goes wrong.
 
+See [DECODING_NOTES.md](DECODING_NOTES.md) for the full byte-mapping
+evidence table and verification methodology.
+
 ## Known limitations
 
 Every byte in the final-consonant and compound-vowel tables has now been
