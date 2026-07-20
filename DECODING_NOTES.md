@@ -9,20 +9,18 @@
 
 ```
 C:\Users\SYS\Documents\GTA-SA-Dev\
-├── KoreanSubtitleOverlay\   (이 저장소, github.com/tladudtn/KoreanSubtitleOverlay, public)
+├── KoreanSubtitleOverlay\   (이 프로젝트)
 │   ├── src\dllmain.cpp      실제 플러그인 소스 (디코더 본체)
 │   ├── src\sa_messages.h    게임 구조체/주소 (plugin-sdk 참조)
 │   └── tools\gxt_scan.cpp   오프라인 전수 검증 도구 (아래 참고)
-├── imgui\                   (사이드로드, 저장소에 포함 안 됨)
-├── minhook\                 (사이드로드, 저장소에 포함 안 됨)
+├── imgui\                   (사이드로드, 프로젝트에 포함 안 됨)
+├── minhook\                 (사이드로드, 프로젝트에 포함 안 됨)
 └── FontExtract\             fonts.txd -> 글리프 PNG 추출 도구 (별도 프로젝트)
 ```
 
 게임 설치 경로: `C:\Program Files (x86)\Steam\steamapps\common\Grand Theft Auto San Andreas`
 - 배포 위치: `modloader\_BASIC\KoreanSubtitleOverlay\KoreanSubtitleOverlay.asi`
 - 원본 한글패치 에셋(참조용): `modloader\_BASIC\Korean_Patch\{american.gxt, fonts.dat, fonts.txd}`
-- 이 게임 설치 폴더 자체도 별도의 **로컬 전용** git 저장소임(모드 트러블슈팅
-  기록용, 원격 없음) - KoreanSubtitleOverlay 저장소와는 무관.
 
 ## 문제 배경
 
@@ -141,20 +139,6 @@ gxt_scan.exe "<게임경로>\modloader\_BASIC\Korean_Patch\american.gxt" report.
    원인), 미매핑 바이트 0개 달성
 6. 0xAE(ㅈ)만 텍스트 근거가 하나뿐이라 FontExtract 글리프 비교로 추가
    확인 (0xAB=ㅅ과 형태 비교, 위 획 하나 차이)
-
-## GitHub / 환경 설정
-
-- 저장소: https://github.com/tladudtn/KoreanSubtitleOverlay (public)
-- 계정: `tladudtn` (tladudtn7598@gmail.com)
-- `gh` CLI: winget MSI 설치가 UAC에서 멈춰서, **관리자 권한 불필요한
-  portable zip 버전**을 `%LOCALAPPDATA%\GitHubCLI\bin\gh.exe`에 설치함.
-  `gh auth login --web`으로 이미 인증 완료(디바이스 코드 플로우, 브라우저는
-  사용자가 직접 완료). `gh auth setup-git`으로 git이 gh 토큰을 credential
-  helper로 쓰도록 연결해둬서 `git push`가 별도 로그인 없이 됨.
-- 로컬 git 계정(이 저장소에만 적용, 전역 아님): `user.name=tladudtn`,
-  `user.email=tladudtn7598@gmail.com`. 단, **첫 커밋만** 계정 연동 전이라
-  작성자가 `GTA SA Mod Troubleshooting`으로 남아있음(의도적으로 안 고침,
-  사용자가 히스토리 재작성을 원치 않음).
 
 ## 남은 작업
 
