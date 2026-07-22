@@ -1,4 +1,6 @@
-# GTA 산안드레아스 한글 자막 오버레이 (작업 중)
+# GTA 산안드레아스 한글 자막 오버레이
+
+GitHub: [tladudtn/GTASA-KoreanSubtitleOverlay](https://github.com/tladudtn/GTASA-KoreanSubtitleOverlay)
 
 GTA 산안드레아스의 기존 자막 시스템은 한글을 자모 단위로
 풀어쓰기해서 저장해두고, 폰트(`fonts.txd`) 글리프만 조합해 화면에서
@@ -103,7 +105,7 @@ MinHook과 Dear ImGui는 이 저장소에 **포함되어 있지 않습니다** -
 
 ```
 GTA-SA-Dev/
-├── KoreanSubtitleOverlay/   (이 저장소)
+├── KoreanSubtitleOverlay/   (이 저장소 - 로컬 폴더명, GitHub 저장소명은 GTASA-KoreanSubtitleOverlay)
 ├── imgui/                   (github.com/ocornut/imgui)
 └── minhook/                 (github.com/TsudaKageyu/minhook)
 ```
