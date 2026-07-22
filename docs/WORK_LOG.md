@@ -336,8 +336,9 @@ merge_fonts <korean fonts.txd> <hd fonts.txd> <font1 소스: korean|hd> <출력 
 - **[txdedit](https://github.com/vaibhavpandeyvpz/txdedit)** (서드파티
   오픈소스 TXD 편집기) - 이 저장소의 `libtxd/`가 `fonts.txd` 읽기/쓰기의
   실제 구현체. DXT5 미지원 버그를 로컬 클론에서 직접 고쳐서 썼다(위
-  "막혀있던 부분" 참고). 이 프로젝트(KoreanSubtitleOverlay)에는
-  포함되어 있지 않고, `FontExtract`/`merge_fonts` 도구가 옆 디렉터리의
+  "막혀있던 부분" 참고). 이 프로젝트(GTASA-KoreanSubtitleOverlay, 로컬
+  폴더명은 KoreanSubtitleOverlay)에는 포함되어 있지 않고,
+  `FontExtract`/`merge_fonts` 도구가 옆 디렉터리의
   클론을 라이브러리 소스로 직접 컴파일해 쓰는 구조다. 수정 사항은 아직
   upstream에 반영/제안하지 않은 로컬 패치 상태.
 

@@ -20,7 +20,8 @@
 
 ```
 C:\Users\SYS\Documents\GTA-SA-Dev\
-├── KoreanSubtitleOverlay\   (이 프로젝트, git 저장소)
+├── KoreanSubtitleOverlay\   (이 프로젝트 - 로컬 폴더명, GitHub 저장소명은
+│                             GTASA-KoreanSubtitleOverlay)
 │   ├── src\dllmain.cpp      실제 플러그인 소스 (디코더 + 오버레이 렌더링 본체)
 │   ├── src\sa_messages.h    게임 구조체/주소 (plugin-sdk 참조)
 │   ├── tools\gxt_scan.cpp   오프라인 전수 검증 도구 (아래 "디버깅 도구" 참고)
