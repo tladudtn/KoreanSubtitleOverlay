@@ -71,10 +71,11 @@ void LogLinef(const char* fmt, ...)
 // missing individual keys) behaves the same as before this option existed.
 struct Config
 {
-    float fontSize = 39.0f; // 26 * 1.5, see the historical comment this replaced
-    int offsetX = 0;        // pixels added to the centered X position
-    int offsetY = 0;        // pixels added to the Y position (82% of screen height)
-    bool debug = false;     // gates the verbose per-frame/per-line diagnostic log
+    float fontSize = 39.0f;  // 26 * 1.5, see the historical comment this replaced
+    int offsetX = 0;         // pixels added to the centered X position
+    int offsetY = 0;         // pixels added to the Y position (82% of screen height)
+    bool debug = false;      // gates the verbose per-frame/per-line diagnostic log
+    std::string fontPath;    // empty = fall back to the system Malgun Gothic chain
 };
 Config g_config;
 HMODULE g_hModule = nullptr;
@@ -104,15 +105,49 @@ void LogDebugLinef(const char* fmt, ...)
     LogLine(buf);
 }
 
+// This module's own directory (with trailing slash), computed once from
+// GetModuleFileNameA. Both the ini file and any relative FontPath setting
+// are resolved against this, not the process's current directory - the
+// same reasoning as the original BuildIniPath this replaced.
+const std::string& GetModuleDir()
+{
+    static std::string dir;
+    static bool computed = false;
+    if (!computed)
+    {
+        char path[MAX_PATH];
+        DWORD len = GetModuleFileNameA(g_hModule, path, MAX_PATH);
+        if (len > 0 && len < MAX_PATH)
+        {
+            std::string s(path, len);
+            size_t pos = s.find_last_of("\\/");
+            if (pos != std::string::npos) dir = s.substr(0, pos + 1);
+        }
+        computed = true;
+    }
+    return dir;
+}
+
 std::string BuildIniPath()
 {
-    char path[MAX_PATH];
-    DWORD len = GetModuleFileNameA(g_hModule, path, MAX_PATH);
-    if (len == 0 || len >= MAX_PATH) return "KoreanSubtitleOverlay.ini";
-    std::string s(path, len);
-    size_t pos = s.find_last_of("\\/");
-    return (pos != std::string::npos) ? s.substr(0, pos + 1) + "KoreanSubtitleOverlay.ini"
-                                       : "KoreanSubtitleOverlay.ini";
+    return GetModuleDir() + "KoreanSubtitleOverlay.ini";
+}
+
+bool IsAbsolutePath(const std::string& p)
+{
+    if (p.size() >= 2 && p[1] == ':') return true;                      // "C:\..."
+    if (p.size() >= 2 && (p[0] == '\\' || p[0] == '/') &&
+        (p[1] == '\\' || p[1] == '/')) return true;                     // UNC "\\server\share"
+    return false;
+}
+
+// Relative FontPath values (e.g. "fonts/MyFont.ttf") resolve against this
+// plugin's own folder, same as the ini file itself, so a bundled font in
+// the mod's fonts/ subfolder Just Works regardless of the game's cwd.
+std::string ResolveFontPath(const std::string& configured)
+{
+    if (configured.empty() || IsAbsolutePath(configured)) return configured;
+    return GetModuleDir() + configured;
 }
 
 int ReadIntSetting(const char* key, int def)
@@ -141,6 +176,13 @@ bool ReadBoolSetting(const char* key, bool def)
     return (buf[0] == 'y' || buf[0] == 'Y' || buf[0] == '1');
 }
 
+std::string ReadStringSetting(const char* key, const char* def)
+{
+    char buf[MAX_PATH];
+    GetPrivateProfileStringA("Subtitle", key, def, buf, sizeof(buf), g_iniPath.c_str());
+    return std::string(buf);
+}
+
 void LoadConfig()
 {
     g_iniPath = BuildIniPath();
@@ -148,8 +190,10 @@ void LoadConfig()
     g_config.offsetX = ReadIntSetting("OffsetX", g_config.offsetX);
     g_config.offsetY = ReadIntSetting("OffsetY", g_config.offsetY);
     g_config.debug = ReadBoolSetting("Debug", g_config.debug);
-    LogLinef("[config] path=%s FontSize=%d OffsetX=%d OffsetY=%d Debug=%d",
-        g_iniPath.c_str(), (int)g_config.fontSize, g_config.offsetX, g_config.offsetY, (int)g_config.debug);
+    g_config.fontPath = ResolveFontPath(ReadStringSetting("FontPath", ""));
+    LogLinef("[config] path=%s FontSize=%d OffsetX=%d OffsetY=%d Debug=%d FontPath=%s",
+        g_iniPath.c_str(), (int)g_config.fontSize, g_config.offsetX, g_config.offsetY, (int)g_config.debug,
+        g_config.fontPath.empty() ? "(default: system Malgun Gothic)" : g_config.fontPath.c_str());
 }
 
 // GXT strings embed inline formatting tags like "~z~", "~1~", "~s~" that
@@ -526,6 +570,24 @@ void LoadKoreanFont()
     ImFontConfig cfg;
     cfg.OversampleH = 2;
     cfg.OversampleV = 2;
+
+    // FontPath in the ini (see LoadConfig/ResolveFontPath) lets a user drop
+    // their own .ttf/.otf in the mod's fonts/ folder instead of relying on
+    // the system's Malgun Gothic - tried first, and only falls through to
+    // the original system-font chain below if it's unset or fails to load.
+    if (!g_config.fontPath.empty())
+    {
+        g_KoreanFont = io.Fonts->AddFontFromFileTTF(
+            g_config.fontPath.c_str(), g_config.fontSize, &cfg, io.Fonts->GetGlyphRangesKorean());
+        if (g_KoreanFont)
+        {
+            LogLinef("[init] loaded custom FontPath: %s", g_config.fontPath.c_str());
+            return;
+        }
+        LogLinef("[warn] FontPath \"%s\" failed to load, falling back to system Malgun Gothic",
+            g_config.fontPath.c_str());
+    }
+
     g_KoreanFont = io.Fonts->AddFontFromFileTTF(
         "C:\\Windows\\Fonts\\malgunbd.ttf", g_config.fontSize, &cfg, io.Fonts->GetGlyphRangesKorean());
     if (!g_KoreanFont)
