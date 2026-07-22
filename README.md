@@ -1,6 +1,6 @@
 # GTA 산안드레아스 한글 자막 오버레이 (작업 중)
 
-GTA 산안드레아스(1.0 US)의 기존 자막 시스템은 한글을 자모 단위로
+GTA 산안드레아스의 기존 자막 시스템은 한글을 자모 단위로
 풀어쓰기해서 저장해두고, 폰트(`fonts.txd`) 글리프만 조합해 화면에서
 모아쓰기처럼 "보이게" 만드는 방식입니다. 이 modloader용 ASI 플러그인은
 이 방식의 한계로 인해 깨지는 자막 렌더링 문제를 고쳐서, 실제로 완성된
@@ -86,7 +86,7 @@ ini 파일이 없거나 특정 키가 빠져 있으면 위 기본값(이 설정 
 ## 의존성
 
 **런타임 의존성** (플레이할 때 반드시 있어야 함)
-- GTA 산안드레아스 1.0 US + [modloader](https://gtaforums.com/topic/577721-relmod-modloader/)
+- GTA 산안드레아스 + [modloader](https://gtaforums.com/topic/577721-relmod-modloader/)
 - 커뮤니티 한글패치 (`fonts.dat`, `fonts.txd`, `american.gxt`)가 이미
   설치되어 있을 것 - 이 플러그인은 한글패치가 이미 깔아놓은 자막 원본
   바이트를 읽어서 다시 그리는 것이지, 번역 자체를 갖고 있지 않습니다.
@@ -120,7 +120,7 @@ GTA-SA-Dev/
 ## 설치 방법
 
 필요한 것:
-- [modloader](https://gtaforums.com/topic/577721-relmod-modloader/)가 설치된 GTA 산안드레아스 1.0 US.
+- [modloader](https://gtaforums.com/topic/577721-relmod-modloader/)가 설치된 GTA 산안드레아스.
 - 한글패치가 이미 설치되어 있을 것 (`fonts.dat`, `fonts.txd`,
   `american.gxt`가 자리에 있어야 함 - 이 플러그인은 자막 *렌더링*만
   고치는 것이지, 스스로 한글 번역을 추가하지는 않습니다).

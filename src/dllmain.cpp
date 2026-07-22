@@ -1,4 +1,4 @@
-// Korean Subtitle Overlay for GTA SA 1.0 US
+// Korean Subtitle Overlay for GTA San Andreas
 //
 // The game's native font renderer (fonts.txd) has no Hangul glyphs, so
 // mission/dialogue subtitles never render correctly for Korean text.
