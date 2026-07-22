@@ -12,6 +12,7 @@
 #include <cstdarg>
 #include <cstdint>
 #include <cstddef>
+#include <cstdlib>
 #include <cfloat>
 #include <string>
 #include <vector>
@@ -60,6 +61,95 @@ void LogLinef(const char* fmt, ...)
     wvsprintfA(buf, fmt, args);
     va_end(args);
     LogLine(buf);
+}
+
+// User-facing tuning knobs, read once at startup from an INI file sitting
+// next to the .asi (same folder, found via this module's own path rather
+// than the process's current directory, since modloader may launch the
+// game with a different cwd). Defaults reproduce this plugin's original
+// hardcoded behavior exactly, so an install with no ini file at all (or
+// missing individual keys) behaves the same as before this option existed.
+struct Config
+{
+    float fontSize = 39.0f; // 26 * 1.5, see the historical comment this replaced
+    int offsetX = 0;        // pixels added to the centered X position
+    int offsetY = 0;        // pixels added to the Y position (82% of screen height)
+    bool debug = false;     // gates the verbose per-frame/per-line diagnostic log
+};
+Config g_config;
+HMODULE g_hModule = nullptr;
+std::string g_iniPath;
+
+// Debug-gated counterparts to LogLine/LogLinef above: init/error/warning
+// lines always go through the plain versions so a report of "it doesn't
+// work" always has setup info to look at, but the noisy per-frame dumps
+// (raw byte hex, slot-selection changes, native-suppress transitions) are
+// only useful while actively chasing a decode/timing bug and otherwise
+// just bloat the log file - those are switched to these instead, and only
+// write anything once Debug=yes is set in the ini.
+void LogDebugLine(const char* msg)
+{
+    if (!g_config.debug) return;
+    LogLine(msg);
+}
+
+void LogDebugLinef(const char* fmt, ...)
+{
+    if (!g_config.debug) return;
+    char buf[1024];
+    va_list args;
+    va_start(args, fmt);
+    wvsprintfA(buf, fmt, args);
+    va_end(args);
+    LogLine(buf);
+}
+
+std::string BuildIniPath()
+{
+    char path[MAX_PATH];
+    DWORD len = GetModuleFileNameA(g_hModule, path, MAX_PATH);
+    if (len == 0 || len >= MAX_PATH) return "KoreanSubtitleOverlay.ini";
+    std::string s(path, len);
+    size_t pos = s.find_last_of("\\/");
+    return (pos != std::string::npos) ? s.substr(0, pos + 1) + "KoreanSubtitleOverlay.ini"
+                                       : "KoreanSubtitleOverlay.ini";
+}
+
+int ReadIntSetting(const char* key, int def)
+{
+    char defStr[16];
+    wsprintfA(defStr, "%d", def);
+    char buf[32];
+    GetPrivateProfileStringA("Subtitle", key, defStr, buf, sizeof(buf), g_iniPath.c_str());
+    return atoi(buf);
+}
+
+float ReadFloatSetting(const char* key, float def)
+{
+    char defStr[32];
+    wsprintfA(defStr, "%d", (int)def);
+    char buf[32];
+    GetPrivateProfileStringA("Subtitle", key, defStr, buf, sizeof(buf), g_iniPath.c_str());
+    float v = static_cast<float>(atof(buf));
+    return v > 0.0f ? v : def;
+}
+
+bool ReadBoolSetting(const char* key, bool def)
+{
+    char buf[8];
+    GetPrivateProfileStringA("Subtitle", key, def ? "yes" : "no", buf, sizeof(buf), g_iniPath.c_str());
+    return (buf[0] == 'y' || buf[0] == 'Y' || buf[0] == '1');
+}
+
+void LoadConfig()
+{
+    g_iniPath = BuildIniPath();
+    g_config.fontSize = ReadFloatSetting("FontSize", g_config.fontSize);
+    g_config.offsetX = ReadIntSetting("OffsetX", g_config.offsetX);
+    g_config.offsetY = ReadIntSetting("OffsetY", g_config.offsetY);
+    g_config.debug = ReadBoolSetting("Debug", g_config.debug);
+    LogLinef("[config] path=%s FontSize=%d OffsetX=%d OffsetY=%d Debug=%d",
+        g_iniPath.c_str(), (int)g_config.fontSize, g_config.offsetX, g_config.offsetY, (int)g_config.debug);
 }
 
 // GXT strings embed inline formatting tags like "~z~", "~1~", "~s~" that
@@ -403,6 +493,7 @@ std::wstring DecodeJamoBytes(const unsigned char* text)
 
 void LogRawBytesOnce(const char* text, const int* numbers, int numberCount)
 {
+    if (!g_config.debug) return;
     static std::string lastLogged;
     if (!text || text == lastLogged) return;
     lastLogged = text;
@@ -429,11 +520,6 @@ void LogRawBytesOnce(const char* text, const int* numbers, int numberCount)
     LogLinef("[subtitle] raw bytes: %s text=\"%s\" numbers=[%s]", hex.c_str(), text, nums.c_str());
 }
 
-// 26 * 1.5 - base size bumped up per request, on top of the actual bold
-// font file below (real bold glyphs read better than a faux-bold hack of
-// redrawing the regular weight offset a few pixels).
-constexpr float kKoreanFontSize = 39.0f;
-
 void LoadKoreanFont()
 {
     ImGuiIO& io = ImGui::GetIO();
@@ -441,12 +527,12 @@ void LoadKoreanFont()
     cfg.OversampleH = 2;
     cfg.OversampleV = 2;
     g_KoreanFont = io.Fonts->AddFontFromFileTTF(
-        "C:\\Windows\\Fonts\\malgunbd.ttf", kKoreanFontSize, &cfg, io.Fonts->GetGlyphRangesKorean());
+        "C:\\Windows\\Fonts\\malgunbd.ttf", g_config.fontSize, &cfg, io.Fonts->GetGlyphRangesKorean());
     if (!g_KoreanFont)
     {
         LogLine("[warn] malgunbd.ttf (bold) not found, falling back to regular malgun.ttf");
         g_KoreanFont = io.Fonts->AddFontFromFileTTF(
-            "C:\\Windows\\Fonts\\malgun.ttf", kKoreanFontSize, &cfg, io.Fonts->GetGlyphRangesKorean());
+            "C:\\Windows\\Fonts\\malgun.ttf", g_config.fontSize, &cfg, io.Fonts->GetGlyphRangesKorean());
     }
     if (!g_KoreanFont)
     {
@@ -468,7 +554,7 @@ void ForceSubtitlesPref()
     static bool loggedOnce = false;
     if (!loggedOnce)
     {
-        LogLinef("[subtitles-pref] current value at 0xBA678C: %d", (int)*PrefsShowSubtitles);
+        LogDebugLinef("[subtitles-pref] current value at 0xBA678C: %d", (int)*PrefsShowSubtitles);
         loggedOnce = true;
     }
     *PrefsShowSubtitles = true;
@@ -544,6 +630,7 @@ const tMessage* PickCurrentMessage()
 // guessing.
 void LogSubtitleSelectionIfChanged(const tMessage* msg)
 {
+    if (!g_config.debug) return;
     static const tMessage* lastMsg = nullptr;
     static unsigned int lastStart = 0xFFFFFFFF;
     unsigned int curStart = msg ? msg->m_dwStartTime : 0;
@@ -610,7 +697,7 @@ void DrawDialogueSubtitles()
     }
     if (utf8 != g_currentLine)
     {
-        LogLinef("[subtitle] now showing: %s", utf8.c_str());
+        LogDebugLinef("[subtitle] now showing: %s", utf8.c_str());
         g_currentLine = utf8;
     }
 
@@ -623,12 +710,12 @@ void DrawDialogueSubtitles()
     // the text and setting the window size explicitly every frame, instead
     // of letting ImGui auto-size it a frame late.
     ImGuiIO& io = ImGui::GetIO();
-    ImVec2 textSize = g_KoreanFont->CalcTextSizeA(kKoreanFontSize, FLT_MAX, 0.0f, g_currentLine.c_str());
+    ImVec2 textSize = g_KoreanFont->CalcTextSizeA(g_config.fontSize, FLT_MAX, 0.0f, g_currentLine.c_str());
     constexpr float kOutlinePad = 4.0f; // room for AddOutlinedText's outline offset
     ImVec2 windowSize(textSize.x + kOutlinePad * 2.0f, textSize.y + kOutlinePad * 2.0f);
 
     ImGui::SetNextWindowPos(
-        ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.82f),
+        ImVec2(io.DisplaySize.x * 0.5f + g_config.offsetX, io.DisplaySize.y * 0.82f + g_config.offsetY),
         ImGuiCond_Always, ImVec2(0.5f, 1.0f));
     ImGui::SetNextWindowSize(windowSize, ImGuiCond_Always);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(kOutlinePad, kOutlinePad));
@@ -639,7 +726,7 @@ void DrawDialogueSubtitles()
         ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBackground);
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     ImVec2 pos = ImGui::GetCursorScreenPos();
-    AddOutlinedText(drawList, g_KoreanFont, kKoreanFontSize, pos,
+    AddOutlinedText(drawList, g_KoreanFont, g_config.fontSize, pos,
         IM_COL32(255, 255, 255, 255), IM_COL32(0, 0, 0, 255), g_currentLine.c_str());
     ImGui::End();
     ImGui::PopFont();
@@ -746,7 +833,7 @@ void __cdecl hkDisplay(bool arg)
     static bool lastSuppress = true;
     if (suppress != lastSuppress)
     {
-        LogLinef("[display-debug] native draw %s (korean=%d until=%u now=%u)",
+        LogDebugLinef("[display-debug] native draw %s (korean=%d until=%u now=%u)",
             suppress ? "SUPPRESSED" : "ALLOWED", (int)(msg != nullptr), g_nativeSuppressUntilTick, now);
         lastSuppress = suppress;
     }
@@ -809,6 +896,8 @@ DWORD WINAPI InitThread(LPVOID)
 {
     LogLine("[init] KoreanSubtitleOverlay InitThread started");
 
+    LoadConfig();
+
     if (MH_Initialize() != MH_OK)
     {
         LogLine("[error] MH_Initialize failed");
@@ -844,6 +933,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID)
     if (reason == DLL_PROCESS_ATTACH)
     {
         LogLine("=== DllMain: DLL_PROCESS_ATTACH ===");
+        g_hModule = hModule;
         DisableThreadLibraryCalls(hModule);
         HANDLE th = CreateThread(nullptr, 0, InitThread, nullptr, 0, nullptr);
         LogLinef("[init] CreateThread returned handle=0x%x", (unsigned int)(uintptr_t)th);
