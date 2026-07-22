@@ -36,13 +36,46 @@ Display_t oDisplay = nullptr;
 bool g_ImGuiReady = false;
 ImFont* g_KoreanFont = nullptr;
 
+// Set from DllMain(DLL_PROCESS_ATTACH) before anything else runs (including
+// the first LogLine call below), so GetModuleDir() always has a valid
+// module handle to resolve against.
+HMODULE g_hModule = nullptr;
+
+// This module's own directory (with trailing slash), computed once from
+// GetModuleFileNameA. The log file, ini file, and any relative FontPath
+// setting are all resolved against this rather than the process's current
+// directory - modloader can leave the game running with a cwd that isn't
+// this plugin's own folder (observed in practice: a relative-path log
+// write once landed inside a different mod's folder entirely), so every
+// file this plugin touches needs an absolute path anchored to its own
+// location instead of trusting the ambient cwd.
+const std::string& GetModuleDir()
+{
+    static std::string dir;
+    static bool computed = false;
+    if (!computed)
+    {
+        char path[MAX_PATH];
+        DWORD len = GetModuleFileNameA(g_hModule, path, MAX_PATH);
+        if (len > 0 && len < MAX_PATH)
+        {
+            std::string s(path, len);
+            size_t pos = s.find_last_of("\\/");
+            if (pos != std::string::npos) dir = s.substr(0, pos + 1);
+        }
+        computed = true;
+    }
+    return dir;
+}
+
 // Raw WinAPI logger (no CRT iostream). A standalone probe confirmed this
 // exact pattern reliably writes from DllMain; an std::ofstream opened from
 // a spawned thread produced no file at all in testing, so we avoid
 // iostream here entirely and stick to plain CreateFileA/WriteFile.
 void LogLine(const char* msg)
 {
-    HANDLE f = CreateFileA("KoreanSubtitleOverlay.log", FILE_APPEND_DATA, FILE_SHARE_READ,
+    std::string path = GetModuleDir() + "KoreanSubtitleOverlay.log";
+    HANDLE f = CreateFileA(path.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ,
         nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (f == INVALID_HANDLE_VALUE) return;
     SetFilePointer(f, 0, nullptr, FILE_END);
@@ -78,7 +111,6 @@ struct Config
     std::string fontPath;    // empty = fall back to the system Malgun Gothic chain
 };
 Config g_config;
-HMODULE g_hModule = nullptr;
 std::string g_iniPath;
 
 // Debug-gated counterparts to LogLine/LogLinef above: init/error/warning
@@ -103,29 +135,6 @@ void LogDebugLinef(const char* fmt, ...)
     wvsprintfA(buf, fmt, args);
     va_end(args);
     LogLine(buf);
-}
-
-// This module's own directory (with trailing slash), computed once from
-// GetModuleFileNameA. Both the ini file and any relative FontPath setting
-// are resolved against this, not the process's current directory - the
-// same reasoning as the original BuildIniPath this replaced.
-const std::string& GetModuleDir()
-{
-    static std::string dir;
-    static bool computed = false;
-    if (!computed)
-    {
-        char path[MAX_PATH];
-        DWORD len = GetModuleFileNameA(g_hModule, path, MAX_PATH);
-        if (len > 0 && len < MAX_PATH)
-        {
-            std::string s(path, len);
-            size_t pos = s.find_last_of("\\/");
-            if (pos != std::string::npos) dir = s.substr(0, pos + 1);
-        }
-        computed = true;
-    }
-    return dir;
 }
 
 std::string BuildIniPath()
@@ -994,8 +1003,10 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID)
 {
     if (reason == DLL_PROCESS_ATTACH)
     {
-        LogLine("=== DllMain: DLL_PROCESS_ATTACH ===");
+        // Must happen before the very first LogLine call below - LogLine
+        // resolves its path through GetModuleDir(), which reads g_hModule.
         g_hModule = hModule;
+        LogLine("=== DllMain: DLL_PROCESS_ATTACH ===");
         DisableThreadLibraryCalls(hModule);
         HANDLE th = CreateThread(nullptr, 0, InitThread, nullptr, 0, nullptr);
         LogLinef("[init] CreateThread returned handle=0x%x", (unsigned int)(uintptr_t)th);
